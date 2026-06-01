@@ -104,6 +104,15 @@
   .filechip{display:flex;align-items:center;gap:10px;padding:11px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:12px;color:var(--ink2);margin-top:8px}
   .key-ok{font-size:11px;color:var(--good)}.key-no{font-size:11px;color:var(--warn)}
   .recent{display:flex;gap:6px;flex-wrap:wrap}
+  .revhead{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
+  .revhead .nm{font-weight:500;font-size:14px;display:flex;flex-direction:column;gap:2px}
+  .revhead .nm small{font-size:10px;color:var(--ink3);font-weight:400}
+  .caret{color:var(--ink3);font-size:13px;width:14px;text-align:center}
+  .revcard.open{border-color:var(--acc)}
+  .reveditor{border-top:1px solid var(--line);margin-top:11px;padding-top:4px}
+  .tagchip{font-size:10px;padding:3px 9px;border-radius:20px;cursor:pointer;font-weight:600;letter-spacing:.03em;border:1px solid}
+  .tagchip.f{background:rgba(127,166,80,.16);border-color:var(--good);color:var(--good)}
+  .tagchip.n{background:rgba(189,169,136,.12);border-color:var(--ink3);color:var(--ink2)}
   .chk{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
   .chk:last-child{border:none}
   .chk .nm{flex:1}
@@ -507,7 +516,9 @@ function renderLog(){
     if(e.kind==='dish'){label=e.dish;tag='dish';}
     else if(e.kind==='adhoc'){const parts=[...Object.entries(e.used||{}).map(([k,v])=>`${v} ${k}`),...(e.unknown||[]).map(u=>u+'?')];label=(e.note?e.note+' — ':'')+parts.join(', ');tag='off-menu';}
     else {label=`${e.item} ${e.amount||''}`;tag='scan';}
-    return `<div class="hist"><div>${label}<span class="tg">${tag}</span></div><div class="d">${ds}</div></div>`;
+    const rn=(e.kind==='scan'&&e.read)?` <span style="color:var(--ink3)">was ${e.read}</span>`:'';
+    const pr=(e.kind==='scan'&&typeof e.price==='number')?` <span style="color:var(--ink3)">· ₹${e.price}</span>`:'';
+    return `<div class="hist"><div>${label}${rn}${pr}<span class="tg">${tag}</span></div><div class="d">${ds}</div></div>`;
   }).join('');
 }
 
@@ -517,7 +528,8 @@ function renderOther(){
   if(!DB.other.length){c.innerHTML='<div class="empty">Nothing yet — non-food from scans lands here</div>';return;}
   c.innerHTML=DB.other.slice(0,80).map(e=>{
     const d=new Date(e.ts).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'2-digit'});
-    return `<div class="hist"><div>${e.name} <span style="color:var(--ink3)">×${e.qty}</span></div><div class="d">${d}</div></div>`;
+    const pr=typeof e.price==='number'?` <span style="color:var(--ink3)">₹${e.price}</span>`:'';
+    return `<div class="hist"><div>${e.name} <span style="color:var(--ink3)">×${e.qty}</span>${pr}</div><div class="d">${d}</div></div>`;
   }).join('');
 }
 
@@ -564,12 +576,13 @@ async function runScan(){
   const known=Object.keys(DEF);
   const prompt=`You are reading a grocery order screenshot from Blinkit (Indian grocery app). Extract every purchased line item.
 Return ONLY a JSON array, no prose, no markdown fences. Each element:
-{"name": string, "category": "food"|"nonfood", "grams": number|null, "count": number|null}
+{"name": string, "category": "food"|"nonfood", "grams": number|null, "count": number|null, "price": number|null}
 Rules:
 - category "food" for edible/cooking items, "nonfood" otherwise.
 - For FOOD, match to a known ingredient using its EXACT name where it clearly corresponds: ${known.join(', ')}. Else use a clean generic name.
 - "grams": total weight purchased if the item shows a weight (e.g. "1 kg" -> 1000, "500 g" -> 500, "900g pack" -> 900). null if no weight shown.
 - "count": number of units/pieces if shown as a count (e.g. "12 pcs", "6 eggs" -> 6, "2 x" -> 2). null if not a count.
+- "price": the FINAL PAID price in rupees for that line (the bold/highlighted amount actually charged), NOT the struck-through MRP. If two prices appear (e.g. ₹245 struck through and ₹211 bold), use 211. Number only, no currency symbol. null if not visible.
 - Give grams when weight is shown even if a pack count also appears; give count for egg/piece items.
 - Skip fees, tips, taxes, totals.`;
   try{
@@ -587,57 +600,119 @@ Rules:
   }catch(err){document.getElementById('scanResult').innerHTML=`<div class="note warn" style="margin-top:14px">Couldn't read it: ${err.message}. ("Failed to fetch" usually means the network blocked the API — try cellular.)</div>`;}
 }
 function reviewScan(items){
-  const food=items.filter(x=>x.category!=='nonfood');
-  const non=items.filter(x=>x.category==='nonfood');
-  window._food=food; window._non=non;
-  const rows=food.map((it,i)=>{
-    const known=DEF[it.name];
-    // decide what to store: grams for dual/weight, count for count
-    let val, unit;
-    if(known){
-      if(known.type==='count'){ val=it.count!=null?it.count:(it.grams!=null?'?':1); unit='pc'; }
-      else if(known.type==='necessity'||known.type==='presence'){ val='→ mark "have"'; unit=''; }
-      else if(known.type==='expiry'){ val='→ freshness reset'; unit=''; }
-      else { val=it.grams!=null?it.grams:(it.count!=null?`${it.count}×?`:'?'); unit='g'; } // dual/weight
-    } else { val=it.grams!=null?it.grams+'g':(it.count!=null?it.count+'pc':'?'); unit=''; }
-    return `<div class="inv"><div class="nm">${it.name}${known?'':' <span class="pill bad">new</span>'}<small>${known?known.type:'unknown — added as weight'}</small></div>
-      <div class="qd" style="min-width:auto">${val}${unit?'<small>'+unit+'</small>':''}</div></div>`;
-  }).join('')||'<div class="empty" style="padding:12px">No food items</div>';
-  const nonRows=non.length?non.map(it=>`<span class="pill">${it.name}${it.count?' ·'+it.count:''}</span>`).join(''):'<span class="note">none</span>';
+  // unified list; each item carries its own category now (editable)
+  items.forEach(it=>{
+    it._editName=it.name;
+    it._isNew=!DEF[it.name];
+    it._cat=(it.category==='nonfood')?'nonfood':'food';
+    if(it.grams!=null){it._qty=it.grams;}
+    else if(it.count!=null){it._qty=it.count;}
+    else {it._qty=0;}
+    it._open=it._isNew; // auto-expand only flagged/new items
+  });
+  window._items=items;
+  renderReview();
+}
+function renderReview(){
+  const items=window._items;
+  const knownList=Object.keys(DEF);
+  const rows=items.map((it,i)=>{
+    const isFood=it._cat==='food';
+    const tagChip=`<span class="tagchip ${isFood?'f':'n'}" onclick="flipCat(${i})">${isFood?'food':'non-food'}</span>`;
+    // collapsed summary
+    const def=it._isNew?null:DEF[it._editName];
+    const unit=def?(def.type==='count'?'pc':(['necessity','presence','expiry'].includes(def.type)?'':'g')):'g';
+    const qtyTxt=unit?`${it._qty}${unit}`:'·';
+    const renamed=(it._editName!==it.name)?`<small>was: ${it.name}</small>`:'';
+    const summary=`<div class="revhead" onclick="toggleRow(${i})">
+        <div class="nm">${it._editName||it.name}${it._isNew?' <span class="pill bad" style="padding:1px 6px">new</span>':''}${renamed}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${isFood?`<span class="note" style="font-size:12px">${qtyTxt}</span>`:''}
+          ${tagChip}
+          <span class="caret">${it._open?'▾':'▸'}</span>
+        </div>
+      </div>`;
+    // expanded editor
+    let editor='';
+    if(it._open){
+      if(isFood){
+        const opts=knownList.map(k=>`<option value="${k}" ${k===it._editName?'selected':''}>${k}</option>`).join('')
+          +`<option value="__new__" ${it._isNew?'selected':''}>+ New item</option>`;
+        editor=`<div class="reveditor">
+          <label style="margin-top:8px">Map to</label>
+          <select class="fld" id="nm_${i}" onchange="onNameSel(${i})">${opts}</select>
+          <input class="fld" id="nw_${i}" placeholder="new ingredient name" value="${it._isNew?(it._editName||'').replace(/"/g,'&quot;'):''}" style="display:${it._isNew?'block':'none'};margin-top:8px" oninput="window._items[${i}]._editName=this.value;">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <label style="margin:0">Qty</label>
+            <input class="fld" id="qt_${i}" type="number" value="${it._qty}" style="flex:1" oninput="window._items[${i}]._qty=parseFloat(this.value)||0">
+            <span class="note" id="qu_${i}" style="min-width:34px">${unit||'—'}</span>
+          </div>
+        </div>`;
+      } else {
+        editor=`<div class="reveditor"><div class="note">Filed under Other (non-food). Tap the tag to move it back to food.</div></div>`;
+      }
+    }
+    return `<div class="card revcard ${it._open?'open':''}" style="padding:0;margin-bottom:8px">
+      <div style="padding:12px 14px">${summary}${editor}</div></div>`;
+  }).join('')||'<div class="empty" style="padding:12px">No items detected</div>';
+  const orderTotal=items.reduce((s,it)=>s+(typeof it.price==='number'?it.price:0),0);
+  const foodN=items.filter(x=>x._cat==='food').length, nonN=items.length-foodN;
   document.getElementById('scanResult').innerHTML=`
-    <div class="sec" style="margin-top:18px">Food → pantry (${food.length})</div>
-    <div class="card">${rows}</div>
-    <div class="sec">Non-food → Other (${non.length})</div>
-    <div class="card"><div class="recent">${nonRows}</div></div>
-    <div class="ifb">Weighed/counted items add to stock. Staples (cheese, sauces) get marked "have". Lettuce's freshness clock resets. New items are added as weight — set their type later if needed.</div>
+    <div class="sec" style="margin-top:18px">Review — ${foodN} food, ${nonN} non-food</div>
+    ${rows}
+    ${orderTotal>0?`<div class="note" style="text-align:center;margin:8px 0 10px">Order total read: <b style="color:var(--ink2)">₹${orderTotal}</b></div>`:''}
+    <div class="ifb">Confident matches are collapsed — tap any row to edit its name, quantity, or tag. New items are expanded by default. Tap the food/non-food chip to reclassify.</div>
     <div style="height:12px"></div>
     <button class="btn pri" onclick="applyScan()">Confirm & update</button>`;
+  items.forEach((_,i)=>{ if(items[i]._open && items[i]._cat==='food') updateQUnit(i); });
+}
+function toggleRow(i){ window._items[i]._open=!window._items[i]._open; renderReview(); }
+function flipCat(i){ window._items[i]._cat = window._items[i]._cat==='food'?'nonfood':'food'; renderReview(); }
+function onNameSel(i){
+  const sel=document.getElementById('nm_'+i).value;
+  const nwField=document.getElementById('nw_'+i);
+  if(sel==='__new__'){ window._items[i]._isNew=true; nwField.style.display='block'; window._items[i]._editName=nwField.value||window._items[i].name; }
+  else { window._items[i]._isNew=false; nwField.style.display='none'; window._items[i]._editName=sel; }
+  updateQUnit(i);
+}
+function updateQUnit(i){
+  const it=window._items[i];
+  const def=it._isNew?null:DEF[it._editName];
+  let u='g';
+  if(def){ if(def.type==='count')u='pc'; else if(['necessity','presence','expiry'].includes(def.type))u='(presence)'; else u='g'; }
+  const el=document.getElementById('qu_'+i); if(el) el.textContent=u;
 }
 function applyScan(){
   if(window._applying){return;} window._applying=true;
-  if(!window._food && !window._non){ window._applying=false; toast('Nothing to apply'); return; }
+  if(!window._items){ window._applying=false; toast('Nothing to apply'); return; }
   try{
-    const food=window._food||[], non=window._non||[];
-    window._food=null; window._non=null;   // clear immediately so a second tap can't re-apply
+    const items=window._items;
+    window._items=null;   // clear immediately so a second tap can't re-apply
     snapshot('scan');
     const ts=Date.now();
-    food.forEach(it=>{
-      const d=DEF[it.name];
+    items.forEach(it=>{
+      const p=(typeof it.price==='number')?it.price:null;
+      if(it._cat==='nonfood'){
+        DB.other.unshift({name:(it._editName||it.name).trim(),read:it.name,qty:it.count||1,price:p,ts});
+        return;
+      }
+      const name=(it._editName||it.name).trim(); if(!name) return;
+      const renamed=(name!==it.name)?it.name:null;   // original read, if changed
+      const qty=(typeof it._qty==='number')?it._qty:0;
+      const d=it._isNew?null:DEF[name];
+      const mk=(amount)=>({kind:'scan',item:name,read:renamed,amount,price:p,ts});
       if(d){
-        if(d.type==='count'){ const c=it.count!=null?it.count:0; if(c){DB.inv[it.name].q=(DB.inv[it.name].q||0)+c; DB.log.unshift({kind:'scan',item:it.name,amount:c+'pc',ts});} }
-        else if(d.type==='necessity'||d.type==='presence'){ DB.inv[it.name].state='have'; DB.log.unshift({kind:'scan',item:it.name,amount:'restocked',ts}); }
-        else if(d.type==='expiry'){ DB.inv[it.name].restock=ts; DB.log.unshift({kind:'scan',item:it.name,amount:'restocked',ts}); }
-        else {
-          let g=it.grams!=null?it.grams:(it.count!=null&&d.type==='dual'?it.count*d.gpp:0);
-          if(g){DB.inv[it.name].q=(DB.inv[it.name].q||0)+g; DB.log.unshift({kind:'scan',item:it.name,amount:g+'g',ts});}
-        }
+        if(d.type==='count'){ if(qty){DB.inv[name].q=(DB.inv[name].q||0)+qty; DB.log.unshift(mk(qty+'pc'));} }
+        else if(d.type==='necessity'||d.type==='presence'){ DB.inv[name].state='have'; DB.log.unshift(mk('restocked')); }
+        else if(d.type==='expiry'){ DB.inv[name].restock=ts; DB.log.unshift(mk('restocked')); }
+        else { if(qty){DB.inv[name].q=(DB.inv[name].q||0)+qty; DB.log.unshift(mk(qty+'g'));} }
       } else {
-        const g=it.grams!=null?it.grams:(it.count!=null?it.count*100:0);
-        DEF[it.name]={type:'weight',sl:100}; DB.inv[it.name]={q:g};
-        DB.log.unshift({kind:'scan',item:it.name,amount:g+'g (new)',ts});
+        if(!DEF[name]){ DEF[name]={type:'weight',sl:100}; }
+        if(!DB.inv[name]) DB.inv[name]={q:0};
+        DB.inv[name].q=(DB.inv[name].q||0)+qty;
+        DB.log.unshift(mk(qty+'g (new)'));
       }
     });
-    (non).forEach(it=>DB.other.unshift({name:it.name,qty:it.count||1,ts}));
     save();                       // persist first
     pendingShot=null;
     document.getElementById('scanResult').innerHTML='';
