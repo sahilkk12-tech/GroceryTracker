@@ -189,6 +189,8 @@
     <div style="height:10px"></div>
     <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
     <button class="btn gho" onclick="document.getElementById('imp').click()">Import backup</button>
+    <div style="height:10px"></div>
+    <button class="btn gho" onclick="clearLog()">Clear log & Other</button>
     <div class="note" style="margin-top:14px;text-align:center">iOS can clear browser storage. Export occasionally so the history (and the future solver's data) is safe.</div>
   </section>
 </div>
@@ -543,6 +545,13 @@ function importData(e){
   const f=e.target.files[0]; if(!f)return; const r=new FileReader();
   r.onload=()=>{try{DB=JSON.parse(r.result);save();toast('Restored');renderAll();}catch(x){toast('Bad file');}};
   r.readAsText(f);
+}
+function clearLog(){
+  if(!DB.log.length && !DB.other.length){ toast('Nothing to clear'); return; }
+  if(!confirm('Clear the entire event log and the Other (non-food) list? Pantry stock and your key are kept. This can be undone once.')) return;
+  snapshot('clear log');
+  DB.log=[]; DB.other=[];
+  save(); renderAll(); toast('Log & Other cleared');
 }
 
 /* ---------- API KEY ---------- */
