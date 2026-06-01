@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1410">
+<title>Larder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1410; --bg2:#211a14; --card:#2a211a; --card2:#332820;
+    --line:#43362a; --ink:#f3e9da; --ink2:#bda988; --ink3:#8a7560;
+    --acc:#e8893b; --acc2:#c5673a; --good:#7fa650; --warn:#d9a441; --bad:#c0563f;
+    --shadow:0 8px 30px rgba(0,0,0,.4);
+    --disp:'Fraunces',Georgia,serif; --mono:'Spline Sans Mono',monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--mono);
+    font-size:15px;line-height:1.5;overflow-x:hidden;
+    background-image:radial-gradient(circle at 20% 0%,rgba(232,137,59,.07),transparent 40%),radial-gradient(circle at 100% 100%,rgba(127,166,80,.05),transparent 45%);
+    background-attachment:fixed;padding-bottom:90px;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px}
+  header{padding:26px 0 18px;display:flex;align-items:flex-end;justify-content:space-between}
+  h1{font-family:var(--disp);font-weight:900;font-size:38px;line-height:.9;letter-spacing:-.02em}
+  h1 .dot{color:var(--acc)}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.18em;margin-top:6px}
+  .sub{font-family:var(--disp);font-style:italic;font-size:15px;color:var(--ink2);font-weight:400}
+
+  .views{position:relative}
+  .view{display:none;animation:fade .35s ease both}
+  .view.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .sec{font-family:var(--disp);font-size:13px;text-transform:uppercase;letter-spacing:.16em;color:var(--ink3);margin:24px 2px 12px;font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+
+  /* dish cards */
+  .dish{display:flex;align-items:center;gap:14px;cursor:pointer;transition:.2s}
+  .dish:active{transform:scale(.985)}
+  .dish .meta{flex:1;min-width:0}
+  .dish .nm{font-family:var(--disp);font-size:18px;font-weight:600;line-height:1.15}
+  .dish .ing{font-size:11.5px;color:var(--ink3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .serv{text-align:center;flex-shrink:0;min-width:54px}
+  .serv .n{font-family:var(--disp);font-size:30px;font-weight:900;line-height:1}
+  .serv .l{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink3);margin-top:2px}
+  .serv.z .n{color:var(--bad)}.serv.lo .n{color:var(--warn)}.serv.ok .n{color:var(--good)}
+
+  .badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;background:var(--acc);color:#1a1410;font-weight:600;letter-spacing:.04em;margin-left:6px;vertical-align:middle}
+  .pill{display:inline-block;font-size:10.5px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--ink2);margin:2px 3px 2px 0;background:var(--bg2)}
+  .pill.miss{border-color:var(--bad);color:var(--bad)}
+
+  /* inventory rows */
+  .inv{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .inv:last-child{border-bottom:none}
+  .inv .nm{flex:1;font-weight:500}
+  .inv .q{font-family:var(--disp);font-weight:900;font-size:20px;min-width:34px;text-align:right}
+  .inv .sl{font-size:10px;color:var(--ink3);min-width:62px;text-align:right}
+  .inv.gap .q{color:var(--ink3)}
+  .inv.gap .nm{color:var(--ink2)}
+  .stepper{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .stepper button{background:var(--card2);border:none;color:var(--ink);width:32px;height:32px;font-size:18px;font-family:var(--mono);cursor:pointer}
+  .stepper button:active{background:var(--acc);color:#1a1410}
+  .stepper input{width:42px;height:32px;background:var(--bg);border:none;border-left:1px solid var(--line);border-right:1px solid var(--line);color:var(--ink);text-align:center;font-family:var(--mono);font-size:14px}
+
+  button.btn{font-family:var(--mono);font-weight:600;font-size:14px;border:none;border-radius:12px;padding:13px 16px;cursor:pointer;transition:.15s;width:100%}
+  .btn.pri{background:var(--acc);color:#1a1410}
+  .btn.pri:active{background:var(--acc2)}
+  .btn.gho{background:transparent;border:1px solid var(--line);color:var(--ink2)}
+  .btn.gho:active{border-color:var(--acc);color:var(--acc)}
+  .btn.sm{width:auto;padding:9px 14px;font-size:12.5px}
+  .row{display:flex;gap:10px}
+
+  .sug{background:linear-gradient(135deg,var(--card2),var(--card));border:1px solid var(--acc);position:relative;overflow:hidden}
+  .sug::before{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;background:radial-gradient(circle,rgba(232,137,59,.18),transparent 70%)}
+  .sug .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:var(--acc);font-weight:600;margin-bottom:6px}
+
+  /* nav */
+  nav{position:fixed;bottom:0;left:0;right:0;background:rgba(26,20,16,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;z-index:50}
+  nav .navwrap{max-width:560px;margin:0 auto;display:flex;width:100%}
+  nav button{flex:1;background:none;border:none;color:var(--ink3);padding:11px 0 14px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.2s}
+  nav button .ic{font-size:19px;line-height:1}
+  nav button.on{color:var(--acc)}
+
+  /* modal */
+  .scrim{position:fixed;inset:0;background:rgba(10,7,4,.7);backdrop-filter:blur(4px);z-index:100;display:none;align-items:flex-end;justify-content:center}
+  .scrim.on{display:flex}
+  .sheet{background:var(--bg2);border:1px solid var(--line);border-bottom:none;border-radius:22px 22px 0 0;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;padding:8px 18px 30px;animation:up .3s cubic-bezier(.2,.8,.2,1)}
+  @keyframes up{from{transform:translateY(100%)}to{transform:none}}
+  .grab{width:38px;height:4px;background:var(--line);border-radius:4px;margin:8px auto 16px}
+  .mh{font-family:var(--disp);font-size:24px;font-weight:600;margin-bottom:4px}
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink3);margin:14px 0 6px}
+  input.fld,select.fld{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;color:var(--ink);font-family:var(--mono);font-size:15px}
+  input.fld:focus,select.fld:focus{outline:none;border-color:var(--acc)}
+
+  .note{font-size:12px;color:var(--ink3);line-height:1.5}
+  .note.warn{color:var(--warn)}
+  .ifb{padding:14px;border-radius:12px;background:var(--card);border:1px dashed var(--line);font-size:12.5px;color:var(--ink2);line-height:1.55}
+  .recent{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:30px;font-size:13px;font-weight:600;opacity:0;transition:.3s;z-index:200;pointer-events:none;box-shadow:var(--shadow)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .empty{text-align:center;color:var(--ink3);padding:30px 10px;font-family:var(--disp);font-style:italic;font-size:16px}
+  .hist{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .hist:last-child{border:none}
+  .hist .d{color:var(--ink3);font-size:11px}
+  .filechip{display:flex;align-items:center;gap:10px;padding:11px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:12px;color:var(--ink2);margin-top:8px}
+  .scanrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .key-ok{font-size:11px;color:var(--good)}
+  .key-no{font-size:11px;color:var(--warn)}
+  .divider{height:1px;background:var(--line);margin:20px 0}
+  a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Larder<span class="dot">.</span></h1>
+      <div class="tag">what's in the kitchen</div>
+    </div>
+    <div id="dayPick" style="text-align:right"></div>
+  </header>
+
+  <div class="views">
+    <!-- TODAY -->
+    <section class="view on" id="v-today">
+      <div id="suggestBox"></div>
+      <div class="sec">What can I make?</div>
+      <div id="dishList"></div>
+    </section>
+
+    <!-- PANTRY -->
+    <section class="view" id="v-pantry">
+      <div class="sec">Inventory</div>
+      <div class="card" id="invCard"></div>
+      <button class="btn gho" onclick="openAdd()">+ Add ingredient</button>
+    </section>
+
+    <!-- SCAN -->
+    <section class="view" id="v-scan">
+      <div class="sec">Scan a Blinkit order</div>
+      <div class="card">
+        <div class="note" style="margin-bottom:12px">Snap or upload a screenshot of your order. Larder reads it and updates the pantry. Unknown items will ask you for details before they're added.</div>
+        <input type="file" id="shot" accept="image/*" style="display:none" onchange="onShot(event)">
+        <button class="btn pri" onclick="document.getElementById('shot').click()">Choose screenshot</button>
+        <div id="shotInfo"></div>
+        <div id="scanResult"></div>
+      </div>
+      <div class="sec">API key</div>
+      <div class="card">
+        <div id="keyStatus"></div>
+        <label>Anthropic API key (stored only on this device)</label>
+        <input class="fld" id="keyIn" type="password" placeholder="sk-ant-..." autocomplete="off">
+        <div class="row" style="margin-top:10px">
+          <button class="btn pri sm" onclick="saveKey()">Save key</button>
+          <button class="btn gho sm" onclick="clearKey()">Remove</button>
+        </div>
+        <div class="note" style="margin-top:12px">Get a key at console.anthropic.com → load $5 in credits → create key. At your volume each scan costs a fraction of a cent.</div>
+      </div>
+    </section>
+
+    <!-- OTHER -->
+    <section class="view" id="v-other">
+      <div class="sec">Non-food items</div>
+      <div class="card" id="otherCard"></div>
+      <div class="note" style="margin-top:14px;text-align:center">A holding bay for non-food things from your scans — timestamped, untouched by the meal logic. A future project.</div>
+    </section>
+
+    <!-- LOG -->
+    <section class="view" id="v-log">
+      <div class="sec">Recent meals</div>
+      <div class="card" id="logCard"></div>
+      <button class="btn gho" onclick="exportData()">Export backup</button>
+      <div style="height:10px"></div>
+      <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
+      <button class="btn gho" onclick="document.getElementById('imp').click()">Import backup</button>
+      <div class="note" style="margin-top:14px;text-align:center">Browser storage can be cleared by iOS. Export now and then so you don't lose history.</div>
+    </section>
+  </div>
+</div>
+
+<nav><div class="navwrap">
+  <button class="on" data-v="today" onclick="nav('today')"><span class="ic">◍</span>Today</button>
+  <button data-v="pantry" onclick="nav('pantry')"><span class="ic">▤</span>Pantry</button>
+  <button data-v="scan" onclick="nav('scan')"><span class="ic">⌑</span>Scan</button>
+  <button data-v="other" onclick="nav('other')"><span class="ic">◇</span>Other</button>
+  <button data-v="log" onclick="nav('log')"><span class="ic">≡</span>Log</button>
+</div></nav>
+
+<div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   STORAGE NOTE
+   This uses localStorage so data persists on your phone once
+   you save this file and open it in Safari. In the preview
+   panel here, localStorage may be blocked, so it falls back to
+   an in-memory store (data resets on reload). On your phone it
+   persists normally. The ONE thing to know.
+============================================================ */
+const mem={};
+const store={
+  get(k){ try{const v=localStorage.getItem(k);return v;}catch(e){return mem[k]??null;} },
+  set(k,v){ try{localStorage.setItem(k,v);}catch(e){mem[k]=v;} },
+  del(k){ try{localStorage.removeItem(k);}catch(e){delete mem[k];} }
+};
+
+/* ---------- SEED DATA (your two tables, baked in) ---------- */
+const SEED_DISHES = {
+  "Chicken Ham, Lettuce & Cheese Sandwich":{"Chicken Ham":2,"Cheese":1,"Lettuce":1,"Cucumber":0.5,"Bread":4},
+  "Maggi & Omelette":{"Maggi":1,"Tomato":0.5,"Eggs":3},
+  "Pasta & Bacon":{"Pasta":1,"Bacon":3,"Pasta Sauce":1,"Mozarella":1},
+  "Pepperoni, Lettuce & Bacon Cheese Sandwich":{"Pepperoni":4,"Bacon":2,"Lettuce":1,"Cheese":1},
+  "Paneer Paratha":{"Paneer":0.5},
+  "Aloo Paratha":{"Aloo":1},
+  "Boiled Egg, Lettuce & Cheese Sandwich":{"Eggs":2,"Lettuce":1,"Bread":6},
+  "Chicken Salad":{"Bacon":3,"Chicken Ham":2,"Lettuce":1,"Tomato":0.5,"Cucumber":0.5,"Ceasar Salad":1,"Thousand Island":1,"Eggs":1,"Sunflower Seeds":1},
+  "Chicken Sausage, Cucumber & Cheese Sandwich":{"Sausage":3,"Bread":4,"Cheese":1,"Cucumber":0.5},
+  "Bread Pakoda":{"Aloo":1,"Bread":4},
+  "Pork Ham, Cucumber and Cheese Sandwich":{"Pork Ham":2,"Cheese":1,"Cucumber":0.5},
+  "English Breakfast":{"Sausage":2,"Bacon":2,"Eggs":1,"Bread":1},
+  "French Toast":{"Eggs":2,"Bread":4}
+};
+// Inventory starts at ZERO — quantities build up from scans + meal logging.
+// Shelf life is kept where you already knew it (it can't be learned from uploads).
+const SEED_INV = {
+  "Cheese":{q:0,sl:100},"Chicken Ham":{q:0,sl:100},"Cucumber":{q:0,sl:null},
+  "Maggi":{q:0,sl:100},"Bread":{q:0,sl:5},"Pasta":{q:0,sl:100},
+  "Pasta Sauce":{q:0,sl:100},"Eggs":{q:0,sl:100},"Mozarella":{q:0,sl:100},
+  "Bacon":{q:0,sl:100},"Lettuce":{q:0,sl:5},"Aloo":{q:0,sl:100},
+  "Paneer":{q:0,sl:5},"Ceasar Salad":{q:0,sl:100},"Thousand Island":{q:0,sl:100},
+  "Sunflower Seeds":{q:0,sl:100},"Tomato":{q:0,sl:null},"Pepperoni":{q:0,sl:null},
+  "Pork Ham":{q:0,sl:null},"Sausage":{q:0,sl:null}
+};
+
+/* ---------- STATE ---------- */
+let DB = load();
+function load(){
+  const raw = store.get('larder_db');
+  if(raw){ try{return JSON.parse(raw);}catch(e){} }
+  return { dishes:SEED_DISHES, inv:SEED_INV, log:[], other:[] };
+}
+function save(){ store.set('larder_db', JSON.stringify(DB)); }
+// migrate older saves that predate the 'other' list
+if(!DB.other) DB.other=[];
+
+/* ---------- HELPERS ---------- */
+function servingsFor(dish){
+  const need = DB.dishes[dish]; let min=Infinity;
+  for(const [ing,per] of Object.entries(need)){
+    const have = DB.inv[ing]?.q;
+    if(have==null) return {n:0,gap:true,limit:ing};
+    if(per<=0) continue;
+    const can = Math.floor(have/per);
+    if(can<min){ min=can; }
+  }
+  return {n:min===Infinity?0:min,gap:false};
+}
+function recentDays(n){ return DB.log.slice(0,n).map(e=>e.dish); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1800); }
+
+/* ---------- TODAY VIEW ---------- */
+function renderToday(){
+  // suggestion: highest servings, not eaten in last 2 logs, prefer variety
+  const recent = recentDays(2);
+  const ranked = Object.keys(DB.dishes).map(d=>({d,s:servingsFor(d)}))
+    .filter(x=>x.s.n>0)
+    .sort((a,b)=>b.s.n-a.s.n);
+  const fresh = ranked.filter(x=>!recent.includes(x.d));
+  const pick = (fresh[0]||ranked[0]);
+  const box=document.getElementById('suggestBox');
+  if(pick){
+    const ings=Object.keys(DB.dishes[pick.d]).join(' · ');
+    box.innerHTML=`<div class="card sug">
+      <div class="lbl">Suggested today</div>
+      <div style="font-family:var(--disp);font-size:24px;font-weight:600;line-height:1.1">${pick.d}</div>
+      <div class="note" style="margin:6px 0 14px">${ings}</div>
+      <button class="btn pri" onclick="logMeal('${esc(pick.d)}')">Cook this · uses 1 serving</button>
+    </div>`;
+  } else {
+    box.innerHTML=`<div class="card sug"><div class="lbl">Suggested today</div><div class="empty" style="padding:10px 0">Pantry's looking thin. Scan an order to restock.</div></div>`;
+  }
+
+  const list=document.getElementById('dishList');
+  list.innerHTML = ranked.length||true ? Object.keys(DB.dishes).map(d=>{
+    const s=servingsFor(d);
+    const cls = s.n===0?'z':s.n<=1?'lo':'ok';
+    const ings=Object.keys(DB.dishes[d]).join(' · ');
+    const rec=recent.includes(d)?'<span class="badge" style="background:var(--card2);color:var(--ink3)">recent</span>':'';
+    return `<div class="card dish" onclick="dishDetail('${esc(d)}')">
+      <div class="meta"><div class="nm">${d}${rec}</div><div class="ing">${ings}</div></div>
+      <div class="serv ${cls}"><div class="n">${s.n}</div><div class="l">serv${s.n===1?'':'s'}</div></div>
+    </div>`;
+  }).join('') : '';
+}
+
+/* ---------- PANTRY VIEW ---------- */
+function renderPantry(){
+  const c=document.getElementById('invCard');
+  c.innerHTML=Object.entries(DB.inv).map(([ing,o])=>{
+    const empty=(o.q||0)===0;
+    const sl=o.sl==null?'<span style="color:var(--ink3)">shelf —</span>':o.sl+'d shelf';
+    return `<div class="inv ${empty?'gap':''}">
+      <div class="nm">${ing}</div>
+      <div class="sl">${sl}</div>
+      <div class="stepper">
+        <button onclick="bump('${esc(ing)}',-1)">−</button>
+        <input type="number" value="${o.q==null?0:o.q}" onchange="setQ('${esc(ing)}',this.value)">
+        <button onclick="bump('${esc(ing)}',1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function bump(ing,d){ const o=DB.inv[ing]; o.q=Math.max(0,(o.q||0)+d); save(); renderPantry(); renderToday(); }
+function setQ(ing,v){ DB.inv[ing].q=Math.max(0,parseFloat(v)||0); save(); renderPantry(); renderToday(); }
+
+/* ---------- LOG MEAL ---------- */
+function logMeal(dish){
+  const need=DB.dishes[dish];
+  for(const [ing,per] of Object.entries(need)){
+    if(DB.inv[ing]&&DB.inv[ing].q!=null) DB.inv[ing].q=Math.max(0,DB.inv[ing].q-per);
+  }
+  DB.log.unshift({dish,ts:Date.now()});
+  save(); toast('Logged: '+dish); renderToday(); renderPantry(); renderLog();
+  closeSheet();
+}
+
+/* ---------- DISH DETAIL SHEET ---------- */
+function dishDetail(d){
+  const need=DB.dishes[d]; const s=servingsFor(d);
+  const rows=Object.entries(need).map(([ing,per])=>{
+    const have=DB.inv[ing]?.q;
+    const cls=have==null?'miss':'';
+    return `<span class="pill ${cls}">${ing} · ${per}${have==null?' (set qty)':''}</span>`;
+  }).join('');
+  openSheet(`<div class="mh">${d}</div>
+    <div class="note">You can make <b style="color:var(--acc)">${s.n}</b> serving${s.n===1?'':'s'} right now.</div>
+    <div style="margin:16px 0">${rows}</div>
+    <button class="btn pri" ${s.n<1?'disabled style="opacity:.4"':''} onclick="logMeal('${esc(d)}')">${s.n<1?'Not enough stock':'Cook · use 1 serving'}</button>`);
+}
+
+/* ---------- ADD INGREDIENT ---------- */
+function openAdd(prefill){
+  const p=prefill||{};
+  openSheet(`<div class="mh">${p.name?'New item: '+p.name:'Add ingredient'}</div>
+    <label>Name</label><input class="fld" id="aN" value="${p.name||''}" ${p.name?'readonly':''}>
+    <label>Quantity (servings available)</label><input class="fld" id="aQ" type="number" value="${p.q??''}">
+    <label>Shelf life (days)</label><input class="fld" id="aS" type="number" value="${p.sl??''}">
+    <div style="height:16px"></div>
+    <button class="btn pri" onclick="addIng()">Save</button>`);
+}
+function addIng(){
+  const n=document.getElementById('aN').value.trim();
+  if(!n){toast('Name required');return;}
+  DB.inv[n]={q:parseFloat(document.getElementById('aQ').value)||0,sl:parseFloat(document.getElementById('aS').value)||null};
+  save(); closeSheet(); renderPantry(); renderToday(); toast('Saved '+n);
+}
+
+/* ---------- LOG VIEW ---------- */
+function renderLog(){
+  const c=document.getElementById('logCard');
+  if(!DB.log.length){c.innerHTML='<div class="empty">No meals logged yet</div>';return;}
+  c.innerHTML=DB.log.slice(0,40).map(e=>{
+    const d=new Date(e.ts); const ds=d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})+' · '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+    return `<div class="hist"><div>${e.dish}</div><div class="d">${ds}</div></div>`;
+  }).join('');
+}
+
+/* ---------- BACKUP ---------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='larder-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+  toast('Backup downloaded');
+}
+function importData(e){
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ DB=JSON.parse(r.result); save(); toast('Backup restored'); renderAll(); }catch(x){toast('Bad file');} };
+  r.readAsText(f);
+}
+
+/* ---------- API KEY ---------- */
+function keyState(){
+  const k=store.get('larder_key');
+  document.getElementById('keyStatus').innerHTML = k
+    ? '<div class="key-ok">✓ Key saved on this device. Scanning enabled.</div>'
+    : '<div class="key-no">⚠ No key yet — scanning is disabled until you add one.</div>';
+}
+function saveKey(){ const v=document.getElementById('keyIn').value.trim(); if(!v){toast('Paste a key first');return;} store.set('larder_key',v); document.getElementById('keyIn').value=''; keyState(); toast('Key saved'); }
+function clearKey(){ store.del('larder_key'); keyState(); toast('Key removed'); }
+
+/* ---------- SCAN ---------- */
+let pendingShot=null;
+
+// Detect the real image type from the first bytes, since a wrong
+// media_type vs actual bytes is the #1 cause of a 400 from the API.
+function sniffType(bytes){
+  if(bytes[0]===0xFF&&bytes[1]===0xD8) return 'image/jpeg';
+  if(bytes[0]===0x89&&bytes[1]===0x50) return 'image/png';
+  if(bytes[0]===0x47&&bytes[1]===0x49) return 'image/gif';
+  if(bytes[0]===0x52&&bytes[1]===0x49&&bytes[8]===0x57&&bytes[9]===0x45) return 'image/webp';
+  return 'image/jpeg';
+}
+function onShot(e){
+  const f=e.target.files[0]; if(!f)return;
+  document.getElementById('shotInfo').innerHTML=`<div class="filechip">📷 ${f.name} · ${(f.size/1024).toFixed(0)} KB</div>`;
+  const r=new FileReader();
+  r.onload=()=>{
+    const buf=new Uint8Array(r.result);
+    let bin=''; for(let i=0;i<buf.length;i++) bin+=String.fromCharCode(buf[i]);
+    pendingShot={ data:btoa(bin), type:sniffType(buf) };
+    renderScanBtn();
+  };
+  r.readAsArrayBuffer(f);
+}
+function renderScanBtn(){
+  document.getElementById('scanResult').innerHTML=`<div style="margin-top:12px"><button class="btn pri" onclick="runScan()">Read this order →</button></div>`;
+}
+async function runScan(){
+  const key=store.get('larder_key');
+  if(!key){ toast('Add your API key first'); return; }
+  if(!pendingShot){ toast('Choose a screenshot first'); return; }
+  document.getElementById('scanResult').innerHTML='<div class="note" style="margin-top:14px">Reading order… ⌑</div>';
+  const known=Object.keys(DB.inv);
+  const prompt=`You are reading a grocery order screenshot from Blinkit (an Indian grocery delivery app). Extract every purchased line item.
+
+Return ONLY a JSON array — no prose, no markdown fences. Each element:
+{"name": string, "qty": number, "category": "food" | "nonfood"}
+
+Rules:
+- "category": "food" for anything edible/drinkable or a cooking ingredient; "nonfood" for household, personal care, cleaning, pet, stationery, etc.
+- For FOOD items, if the product clearly corresponds to one of these known ingredients, use the EXACT known name: ${known.join(', ')}. Otherwise use a clean generic name (e.g. "Amul Butter 500g" -> "Butter").
+- "qty" = number of units/packs purchased (the count shown on the order line). Default to 1 if unclear.
+- Skip delivery fees, tips, taxes, and totals — products only.`;
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body:JSON.stringify({
+        model:"claude-haiku-4-5-20251001",
+        max_tokens:1500,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:pendingShot.type,data:pendingShot.data}},
+          {type:"text",text:prompt}
+        ]}]
+      })
+    });
+    const data=await res.json();
+    if(data.error){
+      const m=data.error.message||'check your key & credits';
+      document.getElementById('scanResult').innerHTML=`<div class="note warn" style="margin-top:14px">API error: ${m}</div>`;
+      return;
+    }
+    let txt=data.content.filter(b=>b.type==='text').map(b=>b.text).join('').replace(/```json|```/g,'').trim();
+    let items=JSON.parse(txt);
+    if(!Array.isArray(items)||!items.length){ document.getElementById('scanResult').innerHTML='<div class="note warn" style="margin-top:14px">No items detected. Try a clearer screenshot of the order list.</div>'; return; }
+    reviewScan(items);
+  }catch(err){
+    document.getElementById('scanResult').innerHTML=`<div class="note warn" style="margin-top:14px">Couldn't read it: ${err.message}. (A "Failed to fetch" usually means the network is blocking the API — try on cellular, or check the key.)</div>`;
+  }
+}
+function reviewScan(items){
+  const known=Object.keys(DB.inv);
+  const food=items.filter(x=>x.category!=='nonfood');
+  const non=items.filter(x=>x.category==='nonfood');
+  const foodRows=food.map((it,i)=>{
+    const isKnown=known.includes(it.name);
+    return `<div class="inv">
+      <div class="nm">${it.name}${isKnown?'':' <span class="pill miss">new</span>'}</div>
+      <div class="stepper">
+        <button onclick="adjScan('f',${i},-1)">−</button>
+        <input type="number" id="f${i}" value="${it.qty||1}">
+        <button onclick="adjScan('f',${i},1)">+</button>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty" style="padding:14px 0">No food items</div>';
+  const nonRows=non.length?non.map(it=>`<span class="pill">${it.name} ·${it.qty||1}</span>`).join(''):'<span class="note">none</span>';
+  window._scanFood=food; window._scanNon=non;
+  document.getElementById('scanResult').innerHTML=`
+    <div class="sec" style="margin-top:18px">Food → pantry (${food.length})</div>
+    <div class="card">${foodRows}</div>
+    <div class="sec">Non-food → Other (${non.length})</div>
+    <div class="card"><div class="recent">${nonRows}</div></div>
+    <div class="ifb">Food items add to your pantry automatically — items tagged "new" are added as fresh ingredients (set their per-serving use later if you want them in a recipe). Non-food items are filed under the Other tab with a timestamp, untouched for now.</div>
+    <div style="height:12px"></div>
+    <button class="btn pri" onclick="applyScan()">Confirm & update</button>`;
+}
+function adjScan(g,i,d){ const el=document.getElementById(g+i); el.value=Math.max(0,(parseFloat(el.value)||0)+d); }
+function applyScan(){
+  const ts=Date.now();
+  window._scanFood.forEach((it,i)=>{
+    const q=parseFloat(document.getElementById('f'+i).value)||0;
+    if(DB.inv[it.name]){ DB.inv[it.name].q=(DB.inv[it.name].q||0)+q; }
+    else { DB.inv[it.name]={q:q,sl:null}; }   // learned: new food auto-added
+  });
+  window._scanNon.forEach(it=>{
+    DB.other.unshift({name:it.name,qty:it.qty||1,ts});
+  });
+  save(); toast('Updated pantry + other'); pendingShot=null;
+  document.getElementById('scanResult').innerHTML=''; document.getElementById('shotInfo').innerHTML='';
+  renderPantry(); renderToday(); renderOther(); nav('pantry');
+}
+
+/* ---------- OTHER (non-food) ---------- */
+function renderOther(){
+  const c=document.getElementById('otherCard'); if(!c)return;
+  if(!DB.other.length){ c.innerHTML='<div class="empty">Nothing here yet — non-food items from scans land here</div>'; return; }
+  c.innerHTML=DB.other.slice(0,80).map(e=>{
+    const d=new Date(e.ts).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'2-digit'});
+    return `<div class="hist"><div>${e.name} <span style="color:var(--ink3)">×${e.qty}</span></div><div class="d">${d}</div></div>`;
+  }).join('');
+}
+
+/* ---------- SHEET / NAV ---------- */
+function openSheet(html){ document.getElementById('sheet').innerHTML='<div class="grab"></div>'+html; document.getElementById('scrim').classList.add('on'); }
+function closeSheet(){ document.getElementById('scrim').classList.remove('on'); }
+document.getElementById('scrim').addEventListener('click',e=>{ if(e.target.id==='scrim')closeSheet(); });
+function nav(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  document.getElementById('v-'+v).classList.add('on');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  window.scrollTo(0,0);
+}
+function esc(s){ return s.replace(/'/g,"\\'"); }
+function renderAll(){ renderToday(); renderPantry(); renderLog(); renderOther(); keyState(); dayHeader(); }
+function dayHeader(){ const d=new Date(); document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}</div>`; }
+
+renderAll();
+</script>
+</body>
+</html>
