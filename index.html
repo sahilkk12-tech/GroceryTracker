@@ -716,7 +716,33 @@ function exportData(){
 }
 function importData(e){
   const f=e.target.files[0]; if(!f)return; const r=new FileReader();
-  r.onload=()=>{try{DB=JSON.parse(r.result);save();showToast('Restored');renderAll();}catch(x){showToast('Bad file');}};
+  r.onload=()=>{
+    let parsed;
+    try{ parsed=JSON.parse(r.result); }
+    catch(x){ showToast('File is not valid JSON'); return; }
+    try{
+      if(!parsed || typeof parsed!=='object' || !parsed.inv){ showToast('Not a Larder backup'); return; }
+      snapshot('import backup');
+      DB=parsed;
+      // normalize like startup does
+      if(!DB.other)DB.other=[]; if(!DB.log)DB.log=[];
+      if(!DB.recipes)DB.recipes=JSON.parse(JSON.stringify(RECIPES));
+      if(!DB.defs)DB.defs={};
+      Object.assign(DEF,DB.defs);
+      for(const [name,d] of Object.entries(DEF)){
+        if(!DB.inv[name]){
+          if(d.type==='necessity'||d.type==='presence') DB.inv[name]={state:'out'};
+          else if(d.type==='expiry') DB.inv[name]={restock:null};
+          else DB.inv[name]={q:0};
+        }
+      }
+      save();                       // persist first — data is in no matter what
+      try{ renderAll(); }catch(rerr){ /* render hiccup shouldn't fail the import */ }
+      showToast('Backup restored'); nav('today');
+    }catch(err){
+      showToast('Import error: '+err.message);
+    }
+  };
   r.readAsText(f);
 }
 function clearLog(){
