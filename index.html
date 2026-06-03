@@ -597,10 +597,22 @@ function renderRecipes(){
       return `<span class="pill">${shown}</span>`;
     }).join('');
     const custom=DB.recipes[d]&&!RECIPES[d];
-    return `<div class="card"><div class="dish" style="cursor:default">
-      <div class="meta"><div class="nm">${d}${custom?' <span class="pill good" style="padding:1px 7px">added</span>':''}</div>
-      <div style="margin-top:6px">${ings}</div></div></div></div>`;
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div class="meta" style="flex:1">
+          <div class="nm" style="font-family:var(--disp);font-size:18px;font-weight:600">${d}${custom?' <span class="pill good" style="padding:1px 7px">added</span>':''}</div>
+          <div style="margin-top:6px">${ings}</div>
+        </div>
+        <button class="btn gho sm" style="padding:6px 11px;flex-shrink:0" onclick="deleteRecipe('${esc(d)}')">Delete</button>
+      </div></div>`;
   }).join('');
+}
+function deleteRecipe(d){
+  if(!DB.recipes[d]){ return; }
+  if(!confirm('Remove "'+d+'" from your dishes? Your pantry stock and log history are kept — this just stops offering the dish.')) return;
+  snapshot('delete '+d);
+  delete DB.recipes[d];
+  save(); renderAll(); showToast('Removed '+d);
 }
 
 let _newRecipe={name:'',ings:{}};
@@ -1031,7 +1043,7 @@ document.getElementById('scrim').addEventListener('click',e=>{if(e.target.id==='
 function nav(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById('v-'+v).classList.add('on');document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));window.scrollTo(0,0);}
 function esc(s){return s.replace(/'/g,"\\'");}
 function cssid(s){return s.replace(/[^a-zA-Z0-9]/g,'_');}
-function dayHeader(){const d=new Date();document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})} · v21</div>`;}
+function dayHeader(){const d=new Date();document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})} · v22</div>`;}
 function renderAll(){renderToday();renderPantry();renderLog();renderOther();renderRecipes();keyState();dayHeader();updateUndo();}
 window.addEventListener('error',function(e){
   try{ var t=document.getElementById('toast'); if(t){ t.textContent='Err: '+(e.message||'?')+(e.lineno?(' @L'+e.lineno):''); t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},4500);} }catch(_){}
