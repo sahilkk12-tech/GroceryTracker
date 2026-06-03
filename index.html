@@ -326,7 +326,7 @@ function load(){
   }
   return {inv,other:[],log:[]};
 }
-function save(){ store.set('larder_db2', JSON.stringify(DB)); if(typeof scheduleSync==='function') scheduleSync(); }
+function save(){ store.set('larder_db2', JSON.stringify(DB)); if(window._appReady && typeof scheduleSync==='function'){ try{ scheduleSync(); }catch(_){} } }
 // migrate: recipes live in DB so user-added ones persist (seed from RECIPES once)
 if(!DB.recipes){ DB.recipes=JSON.parse(JSON.stringify(RECIPES)); }
 // custom ingredient definitions added via recipe editor persist here and merge into DEF
@@ -720,28 +720,31 @@ function importData(e){
     let parsed;
     try{ parsed=JSON.parse(r.result); }
     catch(x){ showToast('File is not valid JSON'); return; }
+    if(!parsed || typeof parsed!=='object' || !parsed.inv){ showToast('Not a Larder backup'); return; }
+    // take a snapshot for undo (guarded)
+    try{ snapshot('import backup'); }catch(_){}
+    // normalize the parsed object BEFORE assigning to DB
     try{
-      if(!parsed || typeof parsed!=='object' || !parsed.inv){ showToast('Not a Larder backup'); return; }
-      snapshot('import backup');
-      DB=parsed;
-      // normalize like startup does
-      if(!DB.other)DB.other=[]; if(!DB.log)DB.log=[];
-      if(!DB.recipes)DB.recipes=JSON.parse(JSON.stringify(RECIPES));
-      if(!DB.defs)DB.defs={};
-      Object.assign(DEF,DB.defs);
-      for(const [name,d] of Object.entries(DEF)){
-        if(!DB.inv[name]){
-          if(d.type==='necessity'||d.type==='presence') DB.inv[name]={state:'out'};
-          else if(d.type==='expiry') DB.inv[name]={restock:null};
-          else DB.inv[name]={q:0};
+      if(!parsed.other)parsed.other=[];
+      if(!parsed.log)parsed.log=[];
+      if(!parsed.recipes)parsed.recipes=JSON.parse(JSON.stringify(RECIPES));
+      if(!parsed.defs)parsed.defs={};
+      try{ Object.assign(DEF,parsed.defs); }catch(_){}
+      for(const name in DEF){
+        if(!parsed.inv[name]){
+          const d=DEF[name];
+          if(d.type==='necessity'||d.type==='presence') parsed.inv[name]={state:'out'};
+          else if(d.type==='expiry') parsed.inv[name]={restock:null};
+          else parsed.inv[name]={q:0};
         }
       }
-      save();                       // persist first — data is in no matter what
-      try{ renderAll(); }catch(rerr){ /* render hiccup shouldn't fail the import */ }
-      showToast('Backup restored'); nav('today');
-    }catch(err){
-      showToast('Import error: '+err.message);
-    }
+    }catch(_){}
+    // commit
+    DB=parsed;
+    try{ store.set('larder_db2', JSON.stringify(DB)); }catch(_){}   // raw save, no sync trigger
+    try{ renderAll(); }catch(_){}
+    try{ nav('today'); }catch(_){}
+    showToast('Backup restored ✓');
   };
   r.readAsText(f);
 }
@@ -1034,6 +1037,7 @@ window.addEventListener('error',function(e){
   try{ var t=document.getElementById('toast'); if(t){ t.textContent='Err: '+(e.message||'?')+(e.lineno?(' @L'+e.lineno):''); t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},4500);} }catch(_){}
 });
 renderAll();
+window._appReady = true;
 if(typeof checkCloudOnOpen==='function') setTimeout(checkCloudOnOpen,800);
 </script>
 </body>
