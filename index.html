@@ -187,7 +187,7 @@
         <button class="btn gho sm" onclick="syncNow()">Sync now ↑</button>
         <button class="btn gho sm" onclick="restoreFromCloud()">Restore from cloud ↓</button>
       </div>
-      <div class="note" style="margin-top:12px">Local stays the source of truth; this mirrors your data to <b>larder-data.json</b> in the repo a few seconds after changes. On a fresh device, Restore pulls it back. Token: GitHub → Settings → Developer settings → Fine-grained tokens → only this repo → Repository permissions → Contents: Read and write.</div>
+      <div class="note" style="margin-top:12px">Manual backup. Tap <b>Sync now ↑</b> to push this device's data to <b>larder-data.json</b> in the repo. On a fresh/wiped device, tap <b>Restore from cloud ↓</b> to pull it back. Nothing syncs automatically — you're in control of when. Use one device as the source of truth. Token: GitHub → Settings → Developer settings → Fine-grained tokens → only this repo → Contents: Read and write.</div>
     </div>
   </section>
 
@@ -326,7 +326,7 @@ function load(){
   }
   return {inv,other:[],log:[]};
 }
-function save(){ store.set('larder_db2', JSON.stringify(DB)); if(window._appReady && typeof scheduleSync==='function'){ try{ scheduleSync(); }catch(_){} } }
+function save(){ store.set('larder_db2', JSON.stringify(DB)); }
 // migrate: recipes live in DB so user-added ones persist (seed from RECIPES once)
 if(!DB.recipes){ DB.recipes=JSON.parse(JSON.stringify(RECIPES)); }
 // custom ingredient definitions added via recipe editor persist here and merge into DEF
@@ -1031,14 +1031,14 @@ document.getElementById('scrim').addEventListener('click',e=>{if(e.target.id==='
 function nav(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));document.getElementById('v-'+v).classList.add('on');document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));window.scrollTo(0,0);}
 function esc(s){return s.replace(/'/g,"\\'");}
 function cssid(s){return s.replace(/[^a-zA-Z0-9]/g,'_');}
-function dayHeader(){const d=new Date();document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}</div>`;}
+function dayHeader(){const d=new Date();document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})} · v21</div>`;}
 function renderAll(){renderToday();renderPantry();renderLog();renderOther();renderRecipes();keyState();dayHeader();updateUndo();}
 window.addEventListener('error',function(e){
   try{ var t=document.getElementById('toast'); if(t){ t.textContent='Err: '+(e.message||'?')+(e.lineno?(' @L'+e.lineno):''); t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},4500);} }catch(_){}
 });
 renderAll();
 window._appReady = true;
-if(typeof checkCloudOnOpen==='function') setTimeout(checkCloudOnOpen,800);
+/* sync is manual-only — no auto-push, no auto-restore. Use the Sync/Restore buttons. */
 </script>
 </body>
 </html>
