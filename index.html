@@ -180,6 +180,14 @@
     <div class="note" style="margin-top:14px;text-align:center">A holding bay for non-food from scans — timestamped, untouched by meal logic.</div>
   </section>
 
+  <!-- RECIPES -->
+  <section class="view" id="v-recipes">
+    <div class="sec">Add a recipe</div>
+    <button class="btn pri" onclick="openNewRecipe()">+ New dish</button>
+    <div class="sec">Your dishes</div>
+    <div id="recipeList"></div>
+  </section>
+
   <!-- LOG -->
   <section class="view" id="v-log">
     <div class="sec">Event log</div>
@@ -200,6 +208,7 @@
   <button data-v="pantry" onclick="nav('pantry')"><span class="ic">▤</span>Pantry</button>
   <button data-v="scan" onclick="nav('scan')"><span class="ic">⌑</span>Scan</button>
   <button data-v="other" onclick="nav('other')"><span class="ic">◇</span>Other</button>
+  <button data-v="recipes" onclick="nav('recipes')"><span class="ic">✎</span>Recipes</button>
   <button data-v="log" onclick="nav('log')"><span class="ic">≡</span>Log</button>
 </div></nav>
 
@@ -218,6 +227,18 @@ const store={
   set(k,v){try{localStorage.setItem(k,v);}catch(e){mem[k]=v;}},
   del(k){try{localStorage.removeItem(k);}catch(e){delete mem[k];}}
 };
+
+/* toast notification — named showToast to avoid colliding with the
+   #toast element (element ids become same-named globals, which would
+   shadow a function called `toast`). */
+function showToast(msg){
+  var t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;
+  t.classList.add('on');
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(function(){ t.classList.remove('on'); },1800);
+}
 
 /* ---------- INGREDIENT DEFINITIONS ----------
    type: dual | count | weight | necessity | presence | expiry
@@ -288,6 +309,20 @@ function load(){
   return {inv,other:[],log:[]};
 }
 function save(){ store.set('larder_db2', JSON.stringify(DB)); }
+// migrate: recipes live in DB so user-added ones persist (seed from RECIPES once)
+if(!DB.recipes){ DB.recipes=JSON.parse(JSON.stringify(RECIPES)); }
+// custom ingredient definitions added via recipe editor persist here and merge into DEF
+if(!DB.defs) DB.defs={};
+Object.assign(DEF, DB.defs);
+// backfill: ensure every DEF ingredient has an inv slot (older saves may lack newer ones)
+for(const [name,d] of Object.entries(DEF)){
+  if(!DB.inv[name]){
+    if(d.type==='necessity'||d.type==='presence') DB.inv[name]={state:'out'};
+    else if(d.type==='expiry') DB.inv[name]={restock:null};
+    else DB.inv[name]={q:0};
+  }
+}
+save();
 
 /* ---------- SINGLE-LEVEL UNDO ----------
    snapshot() captures full state before a mutation; undo() restores it.
@@ -295,11 +330,11 @@ function save(){ store.set('larder_db2', JSON.stringify(DB)); }
 let _snapshot=null, _snapLabel='';
 function snapshot(label){ _snapshot=JSON.stringify({inv:DB.inv,other:DB.other,log:DB.log}); _snapLabel=label||'last change'; updateUndo(); }
 function undo(){
-  if(!_snapshot){ toast('Nothing to undo'); return; }
+  if(!_snapshot){ showToast('Nothing to undo'); return; }
   const s=JSON.parse(_snapshot);
   DB.inv=s.inv; DB.other=s.other; DB.log=s.log;
   _snapshot=null; _snapLabel='';
-  save(); renderAll(); toast('Undone'); updateUndo();
+  save(); renderAll(); showToast('Undone'); updateUndo();
 }
 function updateUndo(){
   document.querySelectorAll('.undoBtn').forEach(b=>{
@@ -328,9 +363,9 @@ function expiryInfo(name){
 }
 // is one serving of a dish makeable? returns {ok, reasons:[]}
 function canMake(dish){
-  const r=RECIPES[dish]; const reasons=[];
+  const r=DB.recipes[dish]; const reasons=[];
   for(const [ing,amt] of Object.entries(r)){
-    const d=DEF[ing], v=DB.inv[ing];
+    const d=DEF[ing], v=DB.inv[ing]||{};
     if(!d){ continue; }
     if(d.type==='necessity'||d.type==='presence'){
       if(v.state==='out') reasons.push(`out of ${ing}`);
@@ -354,7 +389,7 @@ function renderToday(){
   let al='';
   for(const [name,d] of Object.entries(DEF)){
     if(d.type==='necessity'){
-      const s=DB.inv[name].state;
+      const s=(DB.inv[name]&&DB.inv[name].state)||'out';
       if(s!=='have') al+=`<div class="alert"><b>${name} ${s==='out'?'is out':'is low'}.</b> Reorder today.</div>`;
     }
     if(d.type==='expiry'){
@@ -366,10 +401,10 @@ function renderToday(){
   document.getElementById('alerts').innerHTML=al;
 
   const recent=DB.log.filter(e=>e.kind==='dish').slice(0,2).map(e=>e.dish);
-  const dishes=Object.keys(RECIPES).map(d=>({d,m:canMake(d)}));
+  const dishes=Object.keys(DB.recipes).map(d=>({d,m:canMake(d)}));
   dishes.sort((a,b)=> (b.m.ok-a.m.ok) || 0);
   document.getElementById('dishList').innerHTML=dishes.map(({d,m})=>{
-    const ings=Object.keys(RECIPES[d]).join(' · ');
+    const ings=Object.keys(DB.recipes[d]).join(' · ');
     const rec=recent.includes(d)?'<span class="pill" style="border-color:var(--line)">recent</span>':'';
     return `<div class="card dish" onclick="dishDetail('${esc(d)}')">
       <div class="meta"><div class="nm">${d} ${rec}</div><div class="ing">${ings}</div></div>
@@ -379,7 +414,7 @@ function renderToday(){
 }
 
 function dishDetail(d){
-  const r=RECIPES[d], m=canMake(d);
+  const r=DB.recipes[d], m=canMake(d);
   const rows=Object.entries(r).map(([ing,amt])=>{
     const def=DEF[ing], v=DB.inv[ing]; let txt, cls='';
     if(def.type==='necessity'||def.type==='presence'){ txt=`${ing} · ${v.state}`; cls=v.state==='out'?'bad':v.state==='low'?'warn':'good'; }
@@ -398,7 +433,7 @@ function dishDetail(d){
 /* ---------- LOG A DISH ---------- */
 function logDish(dish){
   snapshot('cooking '+dish);
-  const r=RECIPES[dish];
+  const r=DB.recipes[dish];
   for(const [ing,amt] of Object.entries(r)){
     const d=DEF[ing], v=DB.inv[ing];
     if(d.type==='dual') v.q=Math.max(0,(v.q||0)-amt*d.gpp);
@@ -406,26 +441,30 @@ function logDish(dish){
     // necessity/presence/expiry: not deducted
   }
   DB.log.unshift({kind:'dish',dish,ts:Date.now()});
-  save(); closeSheet(); toast('Logged: '+dish); renderAll();
+  save(); closeSheet(); showToast('Logged: '+dish); renderAll();
 }
 
 /* ---------- QUICK / OFF-MENU LOG ---------- */
 function openQuick(){
-  // count-items get a number input; weight/dual items get a "used (unknown)" checkbox
   const countItems=Object.keys(DEF).filter(n=>DEF[n].type==='count');
-  const dualCount=Object.keys(DEF).filter(n=>DEF[n].type==='dual'); // pieces known-ish
+  const dualCount=Object.keys(DEF).filter(n=>DEF[n].type==='dual'); // logged in pieces
   const weightItems=Object.keys(DEF).filter(n=>DEF[n].type==='weight');
   const cRows=[...countItems,...dualCount].map(n=>{
-    const u=DEF[n].type==='dual'?'pc':'pc';
-    return `<div class="inv"><div class="nm">${n}<small>enter ${u} used</small></div>
+    return `<div class="inv"><div class="nm">${n}<small>pieces used</small></div>
       <div class="stepper"><button onclick="qAdj('${esc(n)}',-1)">−</button>
       <input type="number" id="q_${cssid(n)}" value="0"><button onclick="qAdj('${esc(n)}',1)">+</button></div></div>`;
   }).join('');
-  const wRows=weightItems.map(n=>`<div class="chk"><div class="nm">${n}</div><input type="checkbox" id="qu_${cssid(n)}"></div>`).join('');
+  const wRows=weightItems.map(n=>{
+    return `<div class="inv">
+      <div class="nm">${n}<small>grams used (or tick if unknown)</small></div>
+      <input class="fld" id="qw_${cssid(n)}" type="number" placeholder="g" style="width:80px;padding:8px" oninput="if(parseFloat(this.value)>0){var c=document.getElementById('qu_${cssid(n)}');if(c)c.checked=false;}">
+      <input type="checkbox" id="qu_${cssid(n)}" title="used, amount unknown" style="width:20px;height:20px;accent-color:var(--acc)">
+    </div>`;
+  }).join('');
   openSheet(`<div class="mh">Quick log</div>
-    <div class="note">For something off-menu. Enter counts for items you can count; tick weight items you used but can't measure (logged as "used, unknown").</div>
-    <label>Counted items</label><div class="card">${cRows}</div>
-    <label>Weight items used (amount unknown)</label><div class="card">${wRows||'<div class="note">none</div>'}</div>
+    <div class="note">For something off-menu. Enter pieces for countable items, grams for weight items you can measure (like paneer), or tick a weight item as "used, unknown".</div>
+    <label>Counted items (pieces)</label><div class="card">${cRows}</div>
+    <label>Weight items (grams, or ✓ = unknown)</label><div class="card">${wRows||'<div class="note">none</div>'}</div>
     <label>Note (optional)</label><input class="fld" id="qNote" placeholder="e.g. midnight sandwich">
     <div style="height:14px"></div>
     <button class="btn pri" onclick="saveQuick()">Log it</button>`);
@@ -439,18 +478,24 @@ function saveQuick(){
       const v=parseFloat(el.value)||0;
       if(v>0) used[n]=v;
     }
-    if(DEF[n].type==='weight'){ const el=document.getElementById('qu_'+cssid(n)); if(el&&el.checked) unknown.push(n); }
+    if(DEF[n].type==='weight'){
+      const wel=document.getElementById('qw_'+cssid(n));
+      const cel=document.getElementById('qu_'+cssid(n));
+      const g=wel?parseFloat(wel.value)||0:0;
+      if(g>0) used[n]=g;                         // precise grams
+      else if(cel&&cel.checked) unknown.push(n); // fallback: unknown
+    }
   });
   const note=document.getElementById('qNote').value.trim();
-  if(!Object.keys(used).length && !unknown.length){ toast('Nothing entered'); return; }
+  if(!Object.keys(used).length && !unknown.length){ showToast('Nothing entered'); return; }
   snapshot('off-menu log');
   Object.keys(used).forEach(n=>{
-    const d=DEF[n], iv=DB.inv[n];
-    if(d.type==='dual') iv.q=Math.max(0,(iv.q||0)-used[n]*d.gpp);
-    else iv.q=Math.max(0,(iv.q||0)-used[n]);
+    const d=DEF[n], iv=DB.inv[n]||(DB.inv[n]={q:0});
+    if(d.type==='dual') iv.q=Math.max(0,(iv.q||0)-used[n]*d.gpp);  // pieces -> grams
+    else iv.q=Math.max(0,(iv.q||0)-used[n]);                       // count or weight: direct
   });
   DB.log.unshift({kind:'adhoc',used,unknown,note,ts:Date.now()});
-  save(); closeSheet(); toast('Off-menu logged'); renderAll();
+  save(); closeSheet(); showToast('Off-menu logged'); renderAll();
 }
 
 /* ---------- PANTRY ---------- */
@@ -495,7 +540,7 @@ function renderPantry(){
 function stockAdj(n,d){ snapshot('stock change'); const v=DB.inv[n]; v.q=Math.max(0,Math.round((v.q||0)+d)); save(); renderPantry(); renderToday(); }
 function stockSet(n,val){ snapshot('stock change'); DB.inv[n].q=Math.max(0,parseFloat(val)||0); save(); renderPantry(); renderToday(); }
 function setState(n,s){ snapshot('state change'); DB.inv[n].state=s; save(); renderPantry(); renderToday(); }
-function restockExp(n){ snapshot(n+' restock'); DB.inv[n].restock=Date.now(); DB.log.unshift({kind:'scan',item:n,amount:'restocked',ts:Date.now()}); save(); renderPantry(); renderToday(); toast(n+' freshness reset'); }
+function restockExp(n){ snapshot(n+' restock'); DB.inv[n].restock=Date.now(); DB.log.unshift({kind:'scan',item:n,amount:'restocked',ts:Date.now()}); save(); renderPantry(); renderToday(); showToast(n+' freshness reset'); }
 function resetStock(){
   if(!confirm('Zero all stock quantities and condiment states? Your dishes, event log, and API key are kept.')) return;
   snapshot('stock reset');
@@ -505,7 +550,7 @@ function resetStock(){
     else DB.inv[name]={q:0};
   }
   DB.log.unshift({kind:'scan',item:'— stock reset —',amount:'',ts:Date.now()});
-  save(); renderAll(); toast('Stock reset to zero');
+  save(); renderAll(); showToast('Stock reset to zero');
 }
 
 /* ---------- LOG VIEW ---------- */
@@ -516,12 +561,122 @@ function renderLog(){
     const t=new Date(e.ts), ds=t.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' '+t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
     let label,tag;
     if(e.kind==='dish'){label=e.dish;tag='dish';}
-    else if(e.kind==='adhoc'){const parts=[...Object.entries(e.used||{}).map(([k,v])=>`${v} ${k}`),...(e.unknown||[]).map(u=>u+'?')];label=(e.note?e.note+' — ':'')+parts.join(', ');tag='off-menu';}
+    else if(e.kind==='adhoc'){const parts=[...Object.entries(e.used||{}).map(([k,v])=>{const dd=DEF[k];const u=dd?(dd.type==='weight'?'g':'pc'):'';return `${v}${u} ${k}`;}),...(e.unknown||[]).map(u=>u+' (some)')];label=(e.note?e.note+' — ':'')+parts.join(', ');tag='off-menu';}
     else {label=`${e.item} ${e.amount||''}`;tag='scan';}
     const rn=(e.kind==='scan'&&e.read)?` <span style="color:var(--ink3)">was ${e.read}</span>`:'';
     const pr=(e.kind==='scan'&&typeof e.price==='number')?` <span style="color:var(--ink3)">· ₹${e.price}</span>`:'';
     return `<div class="hist"><div>${label}${rn}${pr}<span class="tg">${tag}</span></div><div class="d">${ds}</div></div>`;
   }).join('');
+}
+
+/* ---------- RECIPES TAB ---------- */
+function renderRecipes(){
+  const c=document.getElementById('recipeList'); if(!c)return;
+  c.innerHTML=Object.keys(DB.recipes).map(d=>{
+    const ings=Object.entries(DB.recipes[d]).map(([ing,amt])=>{
+      const def=DEF[ing]; const u=def?(def.type==='count'||def.type==='dual'?'pc':(['necessity','presence','expiry'].includes(def.type)?'':'g')):'';
+      const shown=['necessity','presence','expiry'].includes(def?.type)?ing:`${ing} ${amt}${u}`;
+      return `<span class="pill">${shown}</span>`;
+    }).join('');
+    const custom=DB.recipes[d]&&!RECIPES[d];
+    return `<div class="card"><div class="dish" style="cursor:default">
+      <div class="meta"><div class="nm">${d}${custom?' <span class="pill good" style="padding:1px 7px">added</span>':''}</div>
+      <div style="margin-top:6px">${ings}</div></div></div></div>`;
+  }).join('');
+}
+
+let _newRecipe={name:'',ings:{}};
+function openNewRecipe(){
+  _newRecipe={name:'',ings:{}};
+  renderRecipeSheet();
+}
+function renderRecipeSheet(){
+  const knownList=Object.keys(DEF);
+  const chosen=Object.entries(_newRecipe.ings).map(([ing,amt])=>{
+    const def=DEF[ing];
+    const isAmt=def && !['necessity','presence','expiry'].includes(def.type);
+    const u=def?(def.type==='count'||def.type==='dual'?'pc':(def.type==='weight'?'g':'')):'';
+    let control;
+    if(isAmt){
+      control='<div class="stepper">'
+        +'<button onclick="recAmt(\''+esc(ing)+'\',-1)">−</button>'
+        +'<input type="number" id="ra_'+cssid(ing)+'" value="'+amt+'" oninput="_newRecipe.ings[\''+esc(ing)+'\']=parseFloat(this.value)||0">'
+        +'<button onclick="recAmt(\''+esc(ing)+'\',1)">+</button></div><span class="note" style="min-width:24px">'+u+'</span>';
+    } else {
+      control='<span class="note">required</span>';
+    }
+    return '<div class="inv">'
+      +'<div class="nm">'+ing+'<small>'+(def?def.type:'new')+'</small></div>'
+      +control
+      +'<button class="btn gho sm" onclick="recDel(\''+esc(ing)+'\')" style="padding:6px 10px">✕</button>'
+      +'</div>';
+  }).join('')||'<div class="note">No ingredients yet</div>';
+  const opts=knownList.map(k=>`<option value="${k}">${k}</option>`).join('');
+  openSheet(`<div class="mh">New dish</div>
+    <label>Dish name</label>
+    <input class="fld" id="recName" placeholder="e.g. Maggi & Bacon" value="${_newRecipe.name.replace(/"/g,'&quot;')}" oninput="_newRecipe.name=this.value">
+    <label>Ingredients</label>
+    <div class="card">${chosen}</div>
+    <label>Add ingredient</label>
+    <select class="fld" id="recPick">
+      <option value="">— pick from known —</option>${opts}
+      <option value="__new__">+ Add brand-new ingredient</option>
+    </select>
+    <div id="recNewWrap" style="display:none;margin-top:8px">
+      <input class="fld" id="recNewName" placeholder="new ingredient name" style="margin-bottom:8px">
+      <select class="fld" id="recNewType">
+        <option value="weight">weight (grams)</option>
+        <option value="count">count (pieces)</option>
+        <option value="dual">dual (weight in, pieces in recipe)</option>
+        <option value="presence">presence (have/out)</option>
+        <option value="necessity">necessity (reorder alert)</option>
+        <option value="expiry">expiry (perishable)</option>
+      </select>
+    </div>
+    <button class="btn gho sm" style="margin-top:10px" onclick="recAddIng()">Add to recipe</button>
+    <div style="height:16px"></div>
+    <button class="btn pri" onclick="saveRecipe()">Save dish</button>`);
+  document.getElementById('recPick').addEventListener('change',function(){
+    document.getElementById('recNewWrap').style.display=this.value==='__new__'?'block':'none';
+  });
+}
+function recAmt(ing,d){ const el=document.getElementById('ra_'+cssid(ing)); const v=Math.max(0,(parseFloat(el.value)||0)+d); el.value=v; _newRecipe.ings[ing]=v; }
+function recDel(ing){ delete _newRecipe.ings[ing]; renderRecipeSheet(); }
+function recAddIng(){
+  const pick=document.getElementById('recPick').value;
+  if(pick==='__new__'){
+    const nm=document.getElementById('recNewName').value.trim();
+    if(!nm){ showToast('Name the new ingredient'); return; }
+    const type=document.getElementById('recNewType').value;
+    // register new ingredient definition (persisted) + inventory slot
+    const def={type}; if(type==='dual')def.gpp=100; if(['weight','count','dual','expiry'].includes(type))def.sl=100; if(type==='expiry')def.sl=5;
+    DEF[nm]=def; DB.defs[nm]=def;
+    if(def.type==='necessity'||def.type==='presence') DB.inv[nm]={state:'out'};
+    else if(def.type==='expiry') DB.inv[nm]={restock:null};
+    else DB.inv[nm]={q:0};
+    _newRecipe.ings[nm]=['necessity','presence','expiry'].includes(type)?0:1;
+    save();
+  } else if(pick){
+    _newRecipe.ings[pick]=['necessity','presence','expiry'].includes(DEF[pick].type)?0:1;
+  } else { showToast('Pick an ingredient'); return; }
+  renderRecipeSheet();
+}
+function saveRecipe(){
+  const name=(_newRecipe.name||'').trim();
+  if(!name){ showToast('Name the dish'); return; }
+  if(DB.recipes[name]){ showToast('A dish with that name exists'); return; }
+  if(!Object.keys(_newRecipe.ings).length){ showToast('Add at least one ingredient'); return; }
+  try{
+    snapshot('add recipe');
+    DB.recipes[name]=JSON.parse(JSON.stringify(_newRecipe.ings));
+    save();                 // persist FIRST — recipe is saved no matter what follows
+    closeSheet();
+    showToast('Added '+name);
+    try{ renderAll(); }catch(e){ /* render hiccup shouldn't lose the saved recipe */ }
+    nav('recipes');         // stay on Recipes so you see it land
+  }catch(err){
+    showToast('Save error: '+err.message);
+  }
 }
 
 /* ---------- OTHER ---------- */
@@ -539,19 +694,19 @@ function renderOther(){
 function exportData(){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='larder-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); toast('Backup downloaded');
+  a.download='larder-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); showToast('Backup downloaded');
 }
 function importData(e){
   const f=e.target.files[0]; if(!f)return; const r=new FileReader();
-  r.onload=()=>{try{DB=JSON.parse(r.result);save();toast('Restored');renderAll();}catch(x){toast('Bad file');}};
+  r.onload=()=>{try{DB=JSON.parse(r.result);save();showToast('Restored');renderAll();}catch(x){showToast('Bad file');}};
   r.readAsText(f);
 }
 function clearLog(){
-  if(!DB.log.length && !DB.other.length){ toast('Nothing to clear'); return; }
+  if(!DB.log.length && !DB.other.length){ showToast('Nothing to clear'); return; }
   if(!confirm('Clear the entire event log and the Other (non-food) list? Pantry stock and your key are kept. This can be undone once.')) return;
   snapshot('clear log');
   DB.log=[]; DB.other=[];
-  save(); renderAll(); toast('Log & Other cleared');
+  save(); renderAll(); showToast('Log & Other cleared');
 }
 
 /* ---------- API KEY ---------- */
@@ -559,8 +714,8 @@ function keyState(){
   const k=store.get('larder_key');
   document.getElementById('keyStatus').innerHTML=k?'<div class="key-ok">✓ Key saved on this device.</div>':'<div class="key-no">⚠ No key yet — scanning disabled.</div>';
 }
-function saveKey(){const v=document.getElementById('keyIn').value.trim();if(!v){toast('Paste a key first');return;}store.set('larder_key',v);document.getElementById('keyIn').value='';keyState();toast('Key saved');}
-function clearKey(){store.del('larder_key');keyState();toast('Key removed');}
+function saveKey(){const v=document.getElementById('keyIn').value.trim();if(!v){showToast('Paste a key first');return;}store.set('larder_key',v);document.getElementById('keyIn').value='';keyState();showToast('Key saved');}
+function clearKey(){store.del('larder_key');keyState();showToast('Key removed');}
 
 /* ---------- SCAN ---------- */
 let pendingShot=null;
@@ -579,8 +734,8 @@ function onShot(e){
   r.readAsArrayBuffer(f);
 }
 async function runScan(){
-  const key=store.get('larder_key'); if(!key){toast('Add your API key first');return;}
-  if(!pendingShot){toast('Choose a screenshot first');return;}
+  const key=store.get('larder_key'); if(!key){showToast('Add your API key first');return;}
+  if(!pendingShot){showToast('Choose a screenshot first');return;}
   document.getElementById('scanResult').innerHTML='<div class="note" style="margin-top:14px">Reading order… ⌑</div>';
   const known=Object.keys(DEF);
   const prompt=`You are reading a grocery order screenshot from Blinkit (Indian grocery app). Extract every purchased line item.
@@ -693,7 +848,7 @@ function updateQUnit(i){
 }
 function applyScan(){
   if(window._applying){return;} window._applying=true;
-  if(!window._items){ window._applying=false; toast('Nothing to apply'); return; }
+  if(!window._items){ window._applying=false; showToast('Nothing to apply'); return; }
   try{
     const items=window._items;
     window._items=null;   // clear immediately so a second tap can't re-apply
@@ -728,9 +883,9 @@ function applyScan(){
     document.getElementById('shotInfo').innerHTML='';
     renderAll();
     nav('pantry');
-    toast('Pantry updated');
+    showToast('Pantry updated');
   }catch(err){
-    toast('Update error — see below');
+    showToast('Update error — see below');
     document.getElementById('scanResult').innerHTML+=`<div class="note warn" style="margin-top:10px">Couldn't apply: ${err.message}</div>`;
   }
   window._applying=false;
@@ -744,7 +899,10 @@ function nav(v){document.querySelectorAll('.view').forEach(x=>x.classList.remove
 function esc(s){return s.replace(/'/g,"\\'");}
 function cssid(s){return s.replace(/[^a-zA-Z0-9]/g,'_');}
 function dayHeader(){const d=new Date();document.getElementById('dayPick').innerHTML=`<div class="sub">${d.toLocaleDateString(undefined,{weekday:'long'})}</div><div class="tag">${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}</div>`;}
-function renderAll(){renderToday();renderPantry();renderLog();renderOther();keyState();dayHeader();updateUndo();}
+function renderAll(){renderToday();renderPantry();renderLog();renderOther();renderRecipes();keyState();dayHeader();updateUndo();}
+window.addEventListener('error',function(e){
+  try{ var t=document.getElementById('toast'); if(t){ t.textContent='Err: '+(e.message||'?')+(e.lineno?(' @L'+e.lineno):''); t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},4500);} }catch(_){}
+});
 renderAll();
 </script>
 </body>
