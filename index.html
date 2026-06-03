@@ -171,6 +171,24 @@
       </div>
       <div class="note" style="margin-top:12px">console.anthropic.com → load credits → create key. Each scan costs a fraction of a cent.</div>
     </div>
+
+    <div class="sec">Cloud backup (GitHub)</div>
+    <div class="card">
+      <div id="syncStatus"></div>
+      <label>Repo (owner/name)</label>
+      <input class="fld" id="ghRepo" placeholder="sahilkk12-tech/GroceryTracker" autocomplete="off">
+      <label>Fine-grained token (Contents: read & write)</label>
+      <input class="fld" id="ghTok" type="password" placeholder="github_pat_..." autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri sm" onclick="saveSync()">Save & connect</button>
+        <button class="btn gho sm" onclick="clearSync()">Disconnect</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn gho sm" onclick="syncNow()">Sync now ↑</button>
+        <button class="btn gho sm" onclick="restoreFromCloud()">Restore from cloud ↓</button>
+      </div>
+      <div class="note" style="margin-top:12px">Local stays the source of truth; this mirrors your data to <b>larder-data.json</b> in the repo a few seconds after changes. On a fresh device, Restore pulls it back. Token: GitHub → Settings → Developer settings → Fine-grained tokens → only this repo → Repository permissions → Contents: Read and write.</div>
+    </div>
   </section>
 
   <!-- OTHER -->
@@ -308,7 +326,7 @@ function load(){
   }
   return {inv,other:[],log:[]};
 }
-function save(){ store.set('larder_db2', JSON.stringify(DB)); }
+function save(){ store.set('larder_db2', JSON.stringify(DB)); if(typeof scheduleSync==='function') scheduleSync(); }
 // migrate: recipes live in DB so user-added ones persist (seed from RECIPES once)
 if(!DB.recipes){ DB.recipes=JSON.parse(JSON.stringify(RECIPES)); }
 // custom ingredient definitions added via recipe editor persist here and merge into DEF
@@ -713,9 +731,95 @@ function clearLog(){
 function keyState(){
   const k=store.get('larder_key');
   document.getElementById('keyStatus').innerHTML=k?'<div class="key-ok">✓ Key saved on this device.</div>':'<div class="key-no">⚠ No key yet — scanning disabled.</div>';
+  const rEl=document.getElementById('ghRepo'); if(rEl && !rEl.value){ const r=store.get('larder_gh_repo'); if(r) rEl.value=r; }
+  if(typeof syncState==='function') syncState();
 }
 function saveKey(){const v=document.getElementById('keyIn').value.trim();if(!v){showToast('Paste a key first');return;}store.set('larder_key',v);document.getElementById('keyIn').value='';keyState();showToast('Key saved');}
 function clearKey(){store.del('larder_key');keyState();showToast('Key removed');}
+
+/* ---------- GITHUB CLOUD SYNC (local-first mirror) ---------- */
+const GH_FILE='larder-data.json';
+function ghCfg(){ return {repo:store.get('larder_gh_repo'),tok:store.get('larder_gh_tok')}; }
+function syncState(msg,cls){
+  const el=document.getElementById('syncStatus'); if(!el)return;
+  const c=ghCfg();
+  if(!c.repo||!c.tok){ el.innerHTML='<div class="key-no">⚠ Not connected — your data lives only on this device.</div>'; return; }
+  const last=store.get('larder_sync_at');
+  el.innerHTML='<div class="key-ok">✓ Connected to '+c.repo+(last?(' · last sync '+new Date(+last).toLocaleString()):'')+'</div>'+(msg?('<div class="note '+(cls||'')+'" style="margin-top:4px">'+msg+'</div>'):'');
+}
+function saveSync(){
+  const repo=document.getElementById('ghRepo').value.trim();
+  const tok=document.getElementById('ghTok').value.trim();
+  if(!repo||!tok){ showToast('Enter repo and token'); return; }
+  store.set('larder_gh_repo',repo); store.set('larder_gh_tok',tok);
+  document.getElementById('ghTok').value='';
+  syncState('Connected. Pushing first backup…'); showToast('Connected');
+  syncNow();
+}
+function clearSync(){ store.del('larder_gh_repo'); store.del('larder_gh_tok'); store.del('larder_sync_at'); syncState(); showToast('Disconnected'); }
+
+let _syncTimer=null;
+function scheduleSync(){
+  const c=ghCfg(); if(!c.repo||!c.tok) return;
+  clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(syncNow,5000);
+}
+async function ghGet(){
+  const c=ghCfg(); if(!c.repo||!c.tok) return null;
+  const url='https://api.github.com/repos/'+c.repo+'/contents/'+GH_FILE;
+  const res=await fetch(url,{headers:{'Authorization':'Bearer '+c.tok,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}});
+  if(res.status===404) return {sha:null,data:null};
+  if(!res.ok){ throw new Error('GET '+res.status); }
+  const j=await res.json();
+  const decoded=decodeURIComponent(escape(atob(j.content.replace(/\n/g,''))));
+  return {sha:j.sha,data:JSON.parse(decoded)};
+}
+async function syncNow(){
+  const c=ghCfg(); if(!c.repo||!c.tok){ showToast('Connect GitHub first'); return; }
+  try{
+    syncState('Syncing…');
+    let sha=null;
+    try{ const cur=await ghGet(); sha=cur?cur.sha:null; }catch(e){}
+    const url='https://api.github.com/repos/'+c.repo+'/contents/'+GH_FILE;
+    const payload={ message:'larder sync '+new Date().toISOString(), content:btoa(unescape(encodeURIComponent(JSON.stringify(DB)))) };
+    if(sha) payload.sha=sha;
+    const res=await fetch(url,{method:'PUT',headers:{'Authorization':'Bearer '+c.tok,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!res.ok){ const t=await res.text(); throw new Error('PUT '+res.status+' '+t.slice(0,80)); }
+    store.set('larder_sync_at',Date.now()+'');
+    syncState('Backed up.'); showToast('Synced to cloud');
+  }catch(err){
+    syncState('Sync failed: '+err.message+' (local data is safe)','warn'); showToast('Sync failed — data safe locally');
+  }
+}
+async function restoreFromCloud(){
+  const c=ghCfg(); if(!c.repo||!c.tok){ showToast('Connect GitHub first'); return; }
+  if(!confirm('Replace this device data with the cloud copy? Current local data will be overwritten (undo available once).')) return;
+  try{
+    syncState('Restoring…');
+    const cur=await ghGet();
+    if(!cur||!cur.data){ syncState('No cloud backup found yet.','warn'); showToast('Nothing to restore'); return; }
+    snapshot('restore from cloud');
+    DB=cur.data;
+    if(!DB.other)DB.other=[]; if(!DB.log)DB.log=[]; if(!DB.recipes)DB.recipes=JSON.parse(JSON.stringify(RECIPES)); if(!DB.defs)DB.defs={};
+    Object.assign(DEF,DB.defs);
+    for(const [name,d] of Object.entries(DEF)){ if(!DB.inv[name]){ if(d.type==='necessity'||d.type==='presence')DB.inv[name]={state:'out'}; else if(d.type==='expiry')DB.inv[name]={restock:null}; else DB.inv[name]={q:0}; } }
+    save(); renderAll(); syncState('Restored from cloud.'); showToast('Restored from cloud');
+  }catch(err){
+    syncState('Restore failed: '+err.message,'warn'); showToast('Restore failed');
+  }
+}
+async function checkCloudOnOpen(){
+  const c=ghCfg(); if(!c.repo||!c.tok) return;
+  try{
+    const cur=await ghGet();
+    if(cur&&cur.data){
+      const cloudLog=(cur.data.log||[]).length, localLog=(DB.log||[]).length;
+      if(localLog===0 && cloudLog>0){
+        if(confirm('This device has no history but your cloud backup has '+cloudLog+' events. Restore from cloud?')){ await restoreFromCloud(); }
+      }
+    }
+  }catch(e){}
+}
 
 /* ---------- SCAN ---------- */
 let pendingShot=null;
@@ -904,6 +1008,7 @@ window.addEventListener('error',function(e){
   try{ var t=document.getElementById('toast'); if(t){ t.textContent='Err: '+(e.message||'?')+(e.lineno?(' @L'+e.lineno):''); t.classList.add('on'); setTimeout(function(){t.classList.remove('on');},4500);} }catch(_){}
 });
 renderAll();
+if(typeof checkCloudOnOpen==='function') setTimeout(checkCloudOnOpen,800);
 </script>
 </body>
 </html>
